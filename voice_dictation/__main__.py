@@ -13,28 +13,28 @@ def parse_args() -> argparse.Namespace:
         prog="voice-dictation",
         description="Real-time voice dictation using local Whisper models on GPU.",
     )
-    p.add_argument("--model", default="large-v3-turbo",
+    p.add_argument("--model", default="distil-large-v3",
                    choices=["tiny", "base", "small", "medium", "large-v2", "large-v3", "large-v3-turbo", "distil-large-v3"],
-                   help="Whisper model (default: large-v3-turbo)")
-    p.add_argument("--language", default=None,
-                   help="Language code, e.g. en, es, de (default: auto-detect)")
+                   help="Whisper model (default: distil-large-v3)")
+    p.add_argument("--language", default="en",
+                   help="Language code, e.g. en, es, de (default: en)")
     p.add_argument("--device", type=int, default=None,
                    help="Audio input device index (see --list-devices)")
     p.add_argument("--list-devices", action="store_true",
                    help="List available audio input devices and exit")
-    p.add_argument("--chunk-size", type=float, default=1.0,
-                   help="Min audio chunk in seconds (default: 1.0)")
+    p.add_argument("--chunk-size", type=float, default=0.5,
+                   help="Min audio chunk in seconds (default: 0.5)")
     p.add_argument("--beam-size", type=int, default=1,
                    help="Beam size for decoding (default: 1)")
     p.add_argument("--compute-type", default="float16",
                    choices=["float16", "int8_float16", "int8"],
                    help="Compute type (default: float16)")
-    p.add_argument("--vad-threshold", type=float, default=0.5,
-                   help="VAD speech probability threshold (default: 0.5)")
-    p.add_argument("--min-silence-ms", type=int, default=600,
-                   help="Min silence duration to end speech segment in ms (default: 600)")
-    p.add_argument("--keyboard", action="store_true",
-                   help="Type transcription as keystrokes into the focused window")
+    p.add_argument("--vad-threshold", type=float, default=0.4,
+                   help="VAD speech probability threshold (default: 0.4)")
+    p.add_argument("--min-silence-ms", type=int, default=400,
+                   help="Min silence duration to end speech segment in ms (default: 400)")
+    p.add_argument("--console", action="store_true",
+                   help="Console test mode: print transcription to stdout instead of typing keystrokes")
     p.add_argument("--keyboard-delay", type=float, default=0.0,
                    help="Delay between keystrokes in seconds (default: 0.0)")
     return p.parse_args()
@@ -53,7 +53,9 @@ def print_banner(args, gpu_name: str, device_name: str):
     log(f"  GPU:      {gpu_name}")
     log(f"  Language: {args.language or 'auto-detect'}")
     log(f"  Device:   {device_name}")
-    if args.keyboard:
+    if args.console:
+        log("  Output:   CONSOLE (test mode)")
+    else:
         log("  Output:   KEYBOARD (Alt+Tab to target window)")
     log("=" * 52)
     log("")
@@ -126,11 +128,11 @@ def main():
 
     processor = StreamingProcessor(engine, chunk_size=args.chunk_size)
 
-    if args.keyboard:
+    if args.console:
+        output = ConsoleOutput()
+    else:
         from .output import KeyboardOutput
         output = KeyboardOutput(delay=args.keyboard_delay)
-    else:
-        output = ConsoleOutput()
 
     audio = AudioCapture(device=args.device)
     devices = audio.list_devices()
@@ -148,7 +150,7 @@ def main():
 
     print_banner(args, gpu_name, device_name)
     log("Listening. Speak now. (Ctrl+C to stop)")
-    if args.keyboard:
+    if not args.console:
         log(">>> Alt+Tab to your target window now <<<")
     log("")
 
@@ -193,7 +195,7 @@ def main():
                 if confirmed:
                     output.print_confirmed(confirmed)
                     log(f"[confirmed] {confirmed.strip()}")
-                if partial and not args.keyboard:
+                if partial and args.console:
                     output.print_partial(partial)
 
             elif speaking:
@@ -205,7 +207,7 @@ def main():
                 if confirmed:
                     output.print_confirmed(confirmed)
                     log(f"[confirmed] {confirmed.strip()}")
-                if partial and not args.keyboard:
+                if partial and args.console:
                     output.print_partial(partial)
 
                 silence_chunks += 1

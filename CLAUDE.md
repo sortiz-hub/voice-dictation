@@ -9,10 +9,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Quick Commands
 
 ### Run
-- `python -m voice_dictation` - Start dictation with defaults (large-v3-turbo, float16, beam=1)
-- `python -m voice_dictation --keyboard` - Type transcription as keystrokes into focused window
+- `python -m voice_dictation` - Start dictation in keyboard mode (distil-large-v3, en, low-latency defaults)
+- `python -m voice_dictation --console` - Console test mode: print transcription to stdout instead of typing
 - `python -m voice_dictation --list-devices` - List available audio input devices
-- `python -m voice_dictation --model distil-large-v3 --language en` - Fastest English-only mode
+- `python -m voice_dictation --model large-v3-turbo --language es` - Example: different model/language
 
 ### Install
 ```bash
