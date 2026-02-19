@@ -56,11 +56,23 @@ This installs faster-whisper, sounddevice, and numpy.
 # List audio devices
 python -m voice_dictation --list-devices
 
-# Run with defaults
+# Console test mode (prints to stdout)
+python -m voice_dictation --console
+
+# Default keyboard mode (types into focused window)
 python -m voice_dictation
 ```
 
-On first run, the Whisper model will be downloaded (~3 GB for large-v3-turbo). Subsequent runs use the cached model.
+On first run, the Whisper model will be downloaded (~1 GB for distil-large-v3). Subsequent runs use the cached model.
+
+### 6. Build Binary (Optional)
+
+```bash
+pip install pyinstaller
+python build.py
+```
+
+See [packaging.md](../deployment/packaging.md) for details.
 
 ## Troubleshooting
 

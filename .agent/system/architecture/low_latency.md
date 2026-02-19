@@ -7,43 +7,35 @@ This document covers recommended settings for minimizing end-to-end latency (spe
 | Stage | Typical Latency | Notes |
 |-------|----------------|-------|
 | Audio capture | ~5ms | WASAPI exclusive mode, 100ms blocks |
-| VAD processing | ~1ms | Silero VAD is CPU-lightweight |
-| Chunk accumulation | 0–1000ms | Waits for `chunk_size` interval |
+| VAD processing | ~1ms | Silero VAD ONNX is CPU-lightweight |
+| Chunk accumulation | 0–500ms | Waits for `chunk_size` interval (default 0.5s) |
 | Whisper inference | 50–300ms | Depends on model + audio length + GPU |
 | Local agreement | ~0ms | String comparison only |
 | Output rendering | ~1ms | stdout write or SendInput |
-| **Total (confirmed)** | **~100–500ms** | With optimal settings on RTX 5090 |
-| **Total (partial)** | **~100–300ms** | Partial text appears faster |
+| **Total (confirmed)** | **~100–500ms** | With default low-latency settings on RTX 5090 |
+| **Total (partial)** | **~100–300ms** | Partial text appears faster (console mode only) |
 
 The dominant factor is **chunk accumulation wait** + **Whisper inference time**. Tuning these two gives the biggest gains.
 
-## 2. Recommended Settings by Use Case
+## 2. Default Settings
 
-### Lowest Latency (English, RTX 5090)
+The application ships with low-latency defaults optimized for English on RTX 5090:
+
 ```bash
-python -m voice_dictation \
-  --model distil-large-v3 \
-  --language en \
-  --chunk-size 0.5 \
-  --beam-size 1 \
-  --compute-type float16 \
-  --vad-threshold 0.4 \
-  --min-silence-ms 400
+# These are the defaults — no flags needed
+voice-dictation.exe
+# Equivalent to:
+voice-dictation.exe --model distil-large-v3 --language en --chunk-size 0.5 --beam-size 1 --compute-type float16 --vad-threshold 0.4 --min-silence-ms 400
 ```
-- **distil-large-v3**: ~3x faster than large-v3, marginal accuracy loss for English
-- **--language en**: Skips language detection on every chunk (saves ~50ms per inference)
-- **--chunk-size 0.5**: Transcribe every 500ms instead of 1000ms
-- **--vad-threshold 0.4**: Slightly more sensitive, catches speech onset faster
-- **--min-silence-ms 400**: Finalizes utterances faster after pauses
+
+## 3. Settings by Use Case
 
 ### Balanced (Any Language, RTX 5090)
 ```bash
-python -m voice_dictation \
+voice-dictation.exe \
   --model large-v3-turbo \
   --language <your-lang> \
   --chunk-size 0.8 \
-  --beam-size 1 \
-  --compute-type float16 \
   --min-silence-ms 600
 ```
 - **large-v3-turbo**: Best accuracy/speed trade-off across languages
@@ -51,17 +43,24 @@ python -m voice_dictation \
 
 ### Maximum Accuracy (Slower)
 ```bash
-python -m voice_dictation \
+voice-dictation.exe \
   --model large-v3 \
   --beam-size 5 \
-  --chunk-size 2.0 \
-  --compute-type float16
+  --chunk-size 2.0
 ```
 - **large-v3**: Highest accuracy model, but ~6x slower than turbo variant
 - **beam-size 5**: Better decoding at cost of latency
 - **chunk-size 2.0**: More audio context per transcription = better accuracy
 
-## 3. Parameter Trade-offs
+### Console Test Mode
+```bash
+voice-dictation.exe --console
+```
+- Prints transcription to stdout instead of typing keystrokes
+- Shows partial (in-progress) text with live overwrite
+- Useful for debugging and verifying transcription quality
+
+## 4. Parameter Trade-offs
 
 ### Model Selection
 
@@ -73,16 +72,16 @@ python -m voice_dictation \
 | medium | 4x | Good+ | ~3 GB | Mid-range GPUs |
 | large-v2 | 1.5x | High | ~5 GB | Legacy compatibility |
 | large-v3 | 1x | Highest | ~5 GB | Maximum accuracy |
-| **large-v3-turbo** | **6x** | **High** | **~5 GB** | **Default — best balance** |
-| **distil-large-v3** | **6-8x** | **High (EN)** | **~3 GB** | **Fastest for English** |
+| large-v3-turbo | 6x | High | ~5 GB | Best balance for any language |
+| **distil-large-v3** | **6-8x** | **High (EN)** | **~3 GB** | **Default — fastest for English** |
 
 ### chunk-size (seconds)
 
 | Value | Effect |
 |-------|--------|
 | 0.3 | Very responsive but more GPU cycles, may waste compute on incomplete words |
-| **0.5** | **Good for low-latency use cases** |
-| **1.0** | **Default — balanced latency and efficiency** |
+| **0.5** | **Default — good balance of latency and efficiency** |
+| 1.0 | Balanced latency and efficiency for slower GPUs |
 | 2.0+ | Higher accuracy per chunk but noticeable delay before text appears |
 
 Lower values mean more frequent transcription calls. On RTX 5090, the GPU can handle chunk_size=0.5 easily even with large-v3-turbo.
@@ -112,8 +111,8 @@ float16 is optimal for RTX 5090 — Tensor Cores are designed for FP16 workloads
 | Value | Effect |
 |-------|--------|
 | 0.3 | Very sensitive — catches quiet speech but may trigger on background noise |
-| **0.4** | **Good for low-latency — catches speech onset quickly** |
-| **0.5** | **Default — balanced** |
+| **0.4** | **Default — catches speech onset quickly** |
+| 0.5 | Balanced |
 | 0.7 | Conservative — may miss soft-spoken beginnings |
 
 ### min-silence-ms
@@ -121,8 +120,8 @@ float16 is optimal for RTX 5090 — Tensor Cores are designed for FP16 workloads
 | Value | Effect |
 |-------|--------|
 | 300 | Aggressive — may split mid-sentence pauses |
-| **400** | **Good for fast typists who want quick finalization** |
-| **600** | **Default — handles natural dictation pauses** |
+| **400** | **Default — fast finalization after pauses** |
+| 600 | Handles natural dictation pauses more patiently |
 | 1000 | Very patient — good for slow/thoughtful speech |
 
 ### --language (explicit vs auto-detect)
@@ -130,9 +129,9 @@ float16 is optimal for RTX 5090 — Tensor Cores are designed for FP16 workloads
 Setting `--language` explicitly is one of the easiest latency wins:
 - Auto-detect runs language identification on the first 30 seconds of each chunk
 - Explicit language skips this entirely, saving ~30-80ms per transcription call
-- Always set `--language` when you know the language you'll be speaking
+- Default is `en`; override with `--language <code>` for other languages
 
-## 4. Audio Device Selection
+## 5. Audio Device Selection
 
 The application prefers **WASAPI** devices on Windows for lowest audio capture latency. When listing devices (`--list-devices`), non-WASAPI devices are filtered out if WASAPI is available.
 
@@ -141,7 +140,7 @@ For absolute lowest latency:
 - Ensure WASAPI is the active host API (default on modern Windows)
 - The 100ms block size is a good default — smaller blocks increase CPU overhead without meaningful latency improvement since the bottleneck is Whisper inference
 
-## 5. Warmup
+## 6. Warmup
 
 The application runs a warmup transcription (1s of silence) at startup. This ensures:
 - CUDA kernels are compiled/cached
@@ -150,7 +149,7 @@ The application runs a warmup transcription (1s of silence) at startup. This ens
 
 First-run after install may be slower due to CUDA kernel JIT compilation. Subsequent runs benefit from the CUDA cache.
 
-## 6. Memory Management
+## 7. Memory Management
 
 - Audio buffer is capped at **30 seconds** (`max_samples = 30 * sample_rate`)
 - When exceeded, oldest audio is trimmed from the buffer

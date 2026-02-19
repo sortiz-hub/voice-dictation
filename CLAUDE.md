@@ -8,13 +8,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Quick Commands
 
-### Run
+### Run (from source)
 - `python -m voice_dictation` - Start dictation in keyboard mode (distil-large-v3, en, low-latency defaults)
 - `python -m voice_dictation --console` - Console test mode: print transcription to stdout instead of typing
 - `python -m voice_dictation --list-devices` - List available audio input devices
 - `python -m voice_dictation --model large-v3-turbo --language es` - Example: different model/language
 
-### Install
+### Run (packaged binary)
+- `dist\voice-dictation\voice-dictation.exe` - Start dictation (same defaults as source)
+- `dist\voice-dictation\voice-dictation.exe --console` - Console test mode
+- `dist\voice-dictation\voice-dictation.exe --list-devices` - List devices
+
+### Build
+```bash
+pip install pyinstaller
+python build.py
+```
+
+### Install (dev)
 ```bash
 # 1. Create venv
 python -m venv .venv && .venv/Scripts/activate
@@ -45,6 +56,7 @@ Before answering architecture questions or implementing features:
 
 2. **REFER TO `.agent/sop/`** for procedures:
    - [local_setup.md](/.agent/sop/development/local_setup.md) - Full environment setup
+   - [packaging.md](/.agent/sop/deployment/packaging.md) - Building the Windows binary
 
 **When in doubt, READ documentation first.**
 
@@ -56,17 +68,25 @@ Before answering architecture questions or implementing features:
 - **Python 3.10+** with type hints (union syntax `X | None`)
 - **faster-whisper** for Whisper inference (CTranslate2/CUDA backend)
 - **sounddevice** for real-time audio capture (PortAudio/WASAPI)
-- **Silero VAD** via torch.hub for voice activity detection
+- **Silero VAD** via ONNX (bundled with faster-whisper, no Git dependency)
 
 ### File Layout
 ```
 voice_dictation/
   ├── __main__.py       # CLI entry point, arg parsing, main loop
   ├── audio.py          # AudioCapture: mic → queue (background thread)
-  ├── vad.py            # VADFilter: Silero VAD speech detection
+  ├── vad.py            # VADFilter: Silero VAD ONNX speech detection
   ├── transcriber.py    # TranscriptionEngine: faster-whisper GPU wrapper
   ├── processor.py      # StreamingProcessor: local agreement + buffer mgmt
   └── output.py         # ConsoleOutput / KeyboardOutput (Win32 SendInput)
+
+# Packaging
+run.py                  # Entry point wrapper for PyInstaller
+voice_dictation.spec    # PyInstaller spec (onedir, console, CUDA)
+build.py                # Build + verify script
+hooks/
+  ├── hook-ctranslate2.py          # Custom hook: collect ctranslate2 DLLs
+  └── pyi_rth_faster_whisper.py    # Runtime hook: patch asset path in frozen builds
 ```
 
 ### Key Patterns
@@ -75,7 +95,7 @@ voice_dictation/
 - Streaming uses **local agreement**: text confirmed only when stable across 2 consecutive transcriptions
 - Audio buffer is trimmed to 30s max to keep transcription fast
 - All status/debug output goes to stderr; only transcription text goes to stdout
-- `--keyboard` mode uses Win32 `SendInput` with Unicode scan codes
+- Default mode is **keyboard** (Win32 `SendInput` with Unicode scan codes); use `--console` for test mode
 
 ---
 
@@ -83,9 +103,10 @@ voice_dictation/
 
 - **faster-whisper** >=1.1.0 - CTranslate2-based Whisper inference
 - **sounddevice** >=0.5.0 - PortAudio wrapper for real-time audio
-- **Silero VAD** - Voice activity detection via torch.hub
+- **Silero VAD** - Voice activity detection via ONNX (bundled `silero_vad_v6.onnx`)
 - **PyTorch** >=2.0 - CUDA 12.8 nightly for RTX 5090 (Blackwell sm_120)
 - **numpy** >=1.24 - Audio array processing
+- **PyInstaller** >=6.0 - Windows binary packaging (onedir mode)
 
 ---
 
@@ -93,8 +114,10 @@ voice_dictation/
 
 - **CUDA 12.8 nightly PyTorch is required** for RTX 5090 Blackwell architecture (sm_120)
 - WASAPI is preferred on Windows for lowest audio capture latency
-- Setting `--language` explicitly (e.g., `--language en`) skips auto-detection and reduces latency
+- Default language is `en` — skips auto-detection for lower latency
 - `beam_size=1` (greedy decoding) is default and critical for real-time performance
+- Keyboard mode is the default output; use `--console` for stdout test mode
+- Packaged binary is ~4.3 GB (dominated by torch CUDA DLLs); models download on first run
 - For low-latency tuning details, see `.agent/system/architecture/low_latency.md`
 
 ---
