@@ -1,0 +1,5 @@
+# Install torch + torchaudio with CUDA 12.8 first (required for RTX 5090 / Blackwell sm_120):
+#   pip install --pre torch torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
+faster-whisper>=1.1.0
+sounddevice>=0.5.0
+numpy>=1.24
