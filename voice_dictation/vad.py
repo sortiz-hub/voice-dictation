@@ -1,33 +1,28 @@
-"""Voice Activity Detection using Silero VAD."""
+"""Voice Activity Detection using Silero VAD (ONNX via faster-whisper)."""
 
 import numpy as np
-import torch
 
 
 class VADFilter:
     def __init__(self, threshold: float = 0.5, sample_rate: int = 16000):
         self.threshold = threshold
         self.sample_rate = sample_rate
+        self._window_size = 512
 
-        self._model, _ = torch.hub.load(
-            repo_or_dir="snakers4/silero-vad",
-            model="silero_vad",
-            trust_repo=True,
-        )
-        self._model.eval()
+        from faster_whisper.vad import get_vad_model
+        self._model = get_vad_model()
 
     def is_speech(self, audio: np.ndarray) -> bool:
         """Check if audio chunk contains speech."""
-        tensor = torch.from_numpy(audio).float()
-        window_size = 512
-        for i in range(0, len(tensor), window_size):
-            window = tensor[i:i + window_size]
-            if len(window) < window_size:
-                window = torch.nn.functional.pad(window, (0, window_size - len(window)))
-            prob = self._model(window, self.sample_rate).item()
-            if prob >= self.threshold:
-                return True
-        return False
+        # Pad to multiple of window_size
+        remainder = len(audio) % self._window_size
+        if remainder != 0:
+            audio = np.pad(audio, (0, self._window_size - remainder))
+
+        # SileroVADModel.__call__ returns shape (num_windows, 1)
+        probs = self._model(audio, num_samples=self._window_size)
+        return bool(np.any(probs >= self.threshold))
 
     def reset(self) -> None:
-        self._model.reset_states()
+        # ONNX model resets h/c to zeros on each __call__, no persistent state
+        pass
